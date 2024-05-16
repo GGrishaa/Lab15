@@ -3,10 +3,6 @@
 #include <thread>
 #include <future>
 #include <queue>
-#include <mutex>
-
-std::mutex mtx;
-std::mutex mtxx;
 
 using namespace std;
 
@@ -64,6 +60,7 @@ class matrix{
     int str;
     int stb;
     T **el;
+    int size;
   public:
     matrix(const char namefile[]){
         ifstream fin;
@@ -95,10 +92,12 @@ class matrix{
             }
         }
         fin.close();
+        size = 1;
     }
-    matrix(int a = 0, int b = 0, T c = T(), int size = 1){
+    matrix(int a = 0, int b = 0, T c = T(), int new_size = 1){
         str = a;
         stb = b;
+        this->size = new_size;
         el = new T* [str];
         for(int i = 0; i < str; i++){
             el[i] = new T[stb];
@@ -108,23 +107,17 @@ class matrix{
         if (str % size != 0){
             count++;
         }
-        //count--;
         queue<future<void>> q;
         for(int t = 0; t < count; t++){
-            q.push(async([&](){
+            q.push(async([&, t](){
                 for(int i = t * size; (i < size * t + size) && (i < str); i++){
                     for(int j = 0; j < stb; j++){
-                        //mtxx.lock();
                         if (i == j){
                             el[i][j] = c;
                         }
                         else{
                             el[i][j] = T();
                         }
-                        //mtxx.unlock();
-                        mtx.lock();
-                        cout << "(" << i << " " << j << ") have been filled by " << el[i][j] << " in block " << t + 1 << endl; 
-                        mtx.unlock();
                     }
                 }
             }));
@@ -137,14 +130,29 @@ class matrix{
     matrix(const matrix<T> &other){
         this->str = other.str;
         this->stb = other.stb;
+        this->size = other.size;
         el = new T*[str];
         for(int i = 0; i < str; i++){
             el[i] = new T[stb];
         }
-        for(int i = 0; i < str; i++){
-            for(int j = 0; j < stb; j++){
-                this->el[i][j] = other.el[i][j];
-            }
+
+        int count = str / size;
+        if (str % size != 0){
+            count++;
+        }
+        queue<future<void>> q;
+        for(int t = 0; t < count; t++){
+            q.push(async([&, t](){
+                for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                    for(int j = 0; j < stb; j++){
+                        el[i][j] = other.el[i][j];
+                    }
+                }
+            }));
+        }
+        while (!q.empty()){
+            q.front().get();
+            q.pop();
         }
     }
     ~matrix(){
@@ -161,6 +169,14 @@ class matrix{
     }
     T *get_strok(int a){
         return el[a];
+    }
+    int get_size(){
+        return size;
+    }
+    void update_size(int new_size){
+        if(new_size >= 1){
+            this->size = new_size;
+        }
     }
     void update_strok(int a, T *s){
         for(int i = 0; i < stb; i++){
@@ -229,16 +245,25 @@ class matrix{
     bool operator == (const matrix<T> &other){
         bool fl = true;
         if (this->str == other.str && this->stb == other.stb){
-            fl = true;
-            for(int i = 0; i < this->str; i++){
-                if (fl){
-                    for(int j = 0; j < this->stb; j++){
-                        if (this->el[i][j] != other.el[i][j]){
-                            fl = false;
-                            break;
+            int count = str / size;
+            if (str % size != 0){
+                count++;
+            }
+            queue<future<void>> q;
+            for(int t = 0; t < count; t++){
+                q.push(async([&, t](){
+                    for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                        for(int j = 0; j < stb; j++){
+                            if(this->el[i][j] != other.el[i][j]){
+                                fl = false;
+                            }
                         }
                     }
-                }
+                }));
+            }
+            while (!q.empty()){
+                q.front().get();
+                q.pop();
             }
         } 
         else{
@@ -253,14 +278,25 @@ class matrix{
         }
         else{
             fl = false;
-            for(int i = 0; i < this->str; i++){
-                if (!fl){
-                    for(int j = 0; j < this->stb; j++){
-                        if (this->el[i][j] != other.el[i][j]){
-                            fl = true;
+            int count = str / size;
+            if (str % size != 0){
+                count++;
+            }
+            queue<future<void>> q;
+            for(int t = 0; t < count; t++){
+                q.push(async([&, t](){
+                    for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                        for(int j = 0; j < stb; j++){
+                            if(this->el[i][j] != other.el[i][j]){
+                                fl = true;
+                            }
                         }
                     }
-                }
+                }));
+            }
+            while (!q.empty()){
+                q.front().get();
+                q.pop();
             }
         }
         return fl;
@@ -272,14 +308,28 @@ class matrix{
             delete[] this->el;
         this->str = other.str;
         this->stb = other.stb;
+        this->size = other.size;
         el = new T*[str];
         for(int i = 0; i < str; i++){
             el[i] = new T[stb];
         }
-        for(int i = 0; i < str; i++){
-            for(int j = 0; j < stb; j++){
-                this->el[i][j] = other.el[i][j];
-            }
+        int count = str / size;
+        if (str % size != 0){
+            count++;
+        }
+        queue<future<void>> q;
+        for(int t = 0; t < count; t++){
+            q.push(async([&, t](){
+                for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                    for(int j = 0; j < stb; j++){
+                        this->el[i][j] = other.el[i][j];
+                    }
+                }
+            }));
+        }
+        while (!q.empty()){
+            q.front().get();
+            q.pop();
         }
         return *this;
     }
@@ -290,90 +340,162 @@ class matrix{
         }
         else{
             fl = true;
-            for(int i = 0; i < this->str; i++){
-                if (fl){
-                    for(int j = 0; j < this->stb; j++){
-                        if (i == j){
-                            if (this->el[i][j] != a){
+            int count = str / size;
+            if (str % size != 0){
+                count++;
+            }
+            queue<future<void>> q;
+            for(int t = 0; t < count; t++){
+                q.push(async([&, t](){
+                    for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                        for(int j = 0; j < stb; j++){
+                            if (i == j && this->el[i][j] != a){
                                 fl = false;
-                                break;
                             }
-                        }
-                        else{
-                            if (this->el[i][j] != 0){
+                            else if (i != j && this->el[i][j] != T()){
                                 fl = false;
-                                break;
                             }
                         }
                     }
-                }
+                }));
+            }
+            while (!q.empty()){
+                q.front().get();
+                q.pop();
             }
         }
-    return fl;
+        return fl;
     }
     matrix<T> operator + (const matrix<T> &other){
         matrix<T> summa(this->str, this->stb);
+        summa.update_size(size);
         if(this->str != other.str || this->stb != other.stb){
             cout << "Error: \"+\"" << endl;
         }
         else{
-            for(int i = 0; i < summa.str; i++){
-                for(int j = 0; j < summa.stb; j++){
-                    summa.el[i][j] = this->el[i][j] + other.el[i][j];
-                }
+            int count = str / size;
+            if (str % size != 0){
+                count++;
+            }
+            queue<future<void>> q;
+            for(int t = 0; t < count; t++){
+                q.push(async([&, t](){
+                    for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                        for(int j = 0; j < stb; j++){
+                            summa.el[i][j] = this->el[i][j] + other.el[i][j];
+                        }
+                    }
+                }));
+            }
+            while (!q.empty()){
+                q.front().get();
+                q.pop();
             }
         }
         return summa;
     }
     matrix<T> operator - (const matrix<T> &other){
         matrix<T> razn(this->str, this->stb);
+        razn.update_size(size);
         if(this->str != other.str || this->stb != other.stb){
             cout << "Error: \"-\"" << endl;
         }
         else{
-            for(int i = 0; i < razn.str; i++){
-                for(int j = 0; j < razn.stb; j++){
-                    razn.el[i][j] = this->el[i][j] - other.el[i][j];
-                }
+            int count = str / size;
+            if (str % size != 0){
+                count++;
+            }
+            queue<future<void>> q;
+            for(int t = 0; t < count; t++){
+                q.push(async([&, t](){
+                    for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                        for(int j = 0; j < stb; j++){
+                            razn.el[i][j] = this->el[i][j] - other.el[i][j];
+                        }
+                    }
+                }));
+            }
+            while (!q.empty()){
+                q.front().get();
+                q.pop();
             }
         }
         return razn;
     }
     matrix<T> operator * (const matrix<T> &other){
         matrix<T> pro(this->str, other.stb);
+        pro.update_size(size);
         int a = this->stb;
-        int c;
         if (this->stb != other.str){
             cout << "Error: \"*\"" << endl;
         }
         else{
-            for(int i = 0; i < pro.str; i++){
-                for(int j = 0; j < pro.stb; j++){
-                    c = 0;
-                    for(int t = 0; t < a; t++){
-                        c += this->el[i][t] * other.el[t][j];
+            int count = pro.str / size;
+            if (pro.str % size != 0){
+                count++;
+            }
+            queue<future<void>> q;
+            for(int t = 0; t < count; t++){
+                q.push(async([&, t](){
+                    for(int i = t * size; (i < size * t + size) && (i < pro.str); i++){
+                        for(int j = 0; j < pro.stb; j++){
+                            for(int p = 0; p < a; p++){
+                                pro.el[i][j] += this->el[i][p] * other.el[p][j];
+                            }
+                        }
                     }
-                    pro.el[i][j] = c;
-                }
+                }));
+            }
+            while (!q.empty()){
+                q.front().get();
+                q.pop();
             }
         }
         return pro;
     }
     matrix<T> operator * (const T a){
         matrix<T> um(this->str, this->stb);
-        for(int i = 0; i < this->str; i++){
-            for(int j = 0; j < this->stb; j++){
-                um.el[i][j] = a * this->el[i][j];
-            }
+        um.update_size(size);
+        int count = str / size;
+        if (str % size != 0){
+            count++;
+        }
+        queue<future<void>> q;
+        for(int t = 0; t < count; t++){
+            q.push(async([&, t](){
+                for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                    for(int j = 0; j < stb; j++){
+                        um.el[i][j] = this->el[i][j] * a;
+                    }
+                }
+            }));
+        }
+        while (!q.empty()){
+            q.front().get();
+            q.pop();
         }
         return um;
     }
     matrix<T> operator / (const T a){
         matrix<T> del(this->str, this->stb);
-        for(int i = 0; i < this->str; i++){
-            for(int j = 0; j < this->stb; j++){
-                del.el[i][j] = this->el[i][j] / a;
-            }
+        del.update_size(size);
+        int count = str / size;
+        if (str % size != 0){
+            count++;
+        }
+        queue<future<void>> q;
+        for(int t = 0; t < count; t++){
+            q.push(async([&, t](){
+                for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                    for(int j = 0; j < stb; j++){
+                        del.el[i][j] = this->el[i][j] / a;
+                    }
+                }
+            }));
+        }
+        while (!q.empty()){
+            q.front().get();
+            q.pop();
         }
         return del;
     }
@@ -388,7 +510,7 @@ class matrix{
         return mmm;
     }
     T determinant(){
-        if( this->stb != this->str){
+        if(this->stb != this->str){
             cout << "Error, matrix is not square" << endl;
             return 0;
         }
@@ -400,13 +522,21 @@ class matrix{
         }
         else{
             T d = T();
-            for(int i = 0; i < this->get_stb(); i++){
-                d += pow((-1), i) * this->el[0][i] * ((this->matrix_without_strok(1)).matrix_without_stolb(i + 1)).determinant();
-                //cout << "Без столбика " << i + 1 << " определитель = " << d << endl;
-                //matrix<T> time_matrix = (this->matrix_without_strok(1)).matrix_without_stolb(i+1);
-                //cout << "=========================" << endl << "матрица " << i + 1 << " :" << endl;
-                //time_matrix.show_matrix();
-                //cout << "ее определитель = " << time_matrix.determinant() << endl;
+            int count = stb / size;
+            if (stb % size != 0){
+                count++;
+            }
+            queue<future<void>> q;
+            for(int t = 0; t < count; t++){
+                q.push(async([&, t](){
+                    for(int j = size * t; (j < (t + 1) * size) && j < stb; j++){
+                        d += pow((-1), j) * this->el[0][j] * ((this->matrix_without_strok(1)).matrix_without_stolb(j + 1)).determinant();
+                    }
+                }));
+            }
+            while (!q.empty()){
+                q.front().get();
+                q.pop();
             }
             return d;
         }
@@ -447,10 +577,23 @@ class matrix{
     }
     void delete_stolb_in(int number){
         number--;
-        for(int i = 0; i < this->get_str(); i++){
-            for(int j = number; j < this->get_stb() - 1; j++){
-                this->el[i][j] = this->el[i][j + 1];
-            }
+        int count = str / size;
+        if (str % size != 0){
+            count++;
+        }
+        queue<future<void>> q;
+        for(int t = 0; t < count; t++){
+            q.push(async([&, t](){
+                for(int i = t * size; (i < (t + 1) * size) && (i < str); i++){
+                    for(int j = number; j < stb - 1; j++){
+                        this->el[i][j] = this->el[i][j + 1];
+                    }
+                }
+            }));
+        }
+        while (!q.empty()){
+            q.front().get();
+            q.pop();
         }
         this->stb = this->get_stb() - 1;
     }
@@ -458,24 +601,53 @@ class matrix{
         return (pow((-1), a + b) * (this->matrix_without_strok(a).matrix_without_stolb(b)).determinant());
     }
     matrix<T> alg_dop_matrization(){
+        if(str != stb){
+            return *this;
+        }
         matrix<T> mm(this->get_str(), this->get_stb());
-        T* strok = new T[this->get_stb()];
-        for(int i = 0; i < this->get_str(); i++){
-            for(int j = 0; j < this->get_stb(); j++){
-                strok[j] = this->alg_dop(i + 1, j + 1);
-            }
-            mm.update_strok(i, strok);
-            }
-        delete [] strok;
+        int count = str / size;
+        if (str % size != 0){
+            count++;
+        }
+        queue<future<void>> q;
+        for(int t = 0; t < count; t++){
+            q.push(async([&, t](){
+                T* strok = new T[stb];
+                for(int i = t * size; (i < str) && (i < (t + 1) * size); i++){
+                    for(int j = 0; j < stb; j++){
+                        strok[j] = this->alg_dop(i + 1, j + 1);
+                    }
+                    mm.update_strok(i, strok);
+                }
+                delete[] strok;
+            }));
+        }
+        while (!q.empty()){
+            q.front().get();
+            q.pop();
+        }
         return mm;
     }
     void transposing(){
-        for(int i = 0; i < this->get_str(); i++){
-            for(int j = i; j < this->get_stb(); j++){
-                T c = this->el[i][j];
-                el[i][j] = el[j][i];
-                el[j][i] = c;
-            }
+        int count = str / size;
+        if (str % size != 0){
+            count++;
+        }
+        queue<future<void>> q;
+        for(int t = 0; t < count; t++){
+            q.push(async([&, t](){
+                for(int i = t * size; (i < size * t + size) && (i < str); i++){
+                    for(int j = i; j < stb; j++){
+                        T c = el[i][j];
+                        el[i][j] = el[j][i];
+                        el[j][i] = c;
+                    }
+                }
+            }));
+        }
+        while (!q.empty()){
+            q.front().get();
+            q.pop();
         }
     }
 };
@@ -531,7 +703,10 @@ void umnozhenie(matrix<T> &m, int a, int d){
 
 
 int main(){
-    matrix<int> m3(5, 5, 4, 2);
-    m3.show_matrix();
+    matrix<int> m = matrix<int>::single_matrix(3);
+    m.update_size(2);
+    m.show_matrix();
+    matrix<int> m2 = m.matrix_without_stolb(2);
+    m2.show_matrix();
     return 0;
 }
